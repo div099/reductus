@@ -89,26 +89,36 @@ webreduce.instruments['ncnr.ospec'] = webreduce.instruments['ncnr.ospec'] || {};
     return plottable
   } 
   
-  instrument.plot = function(result) { 
+  instrument.plot = function(results) { 
     var plottable;
-    if (result == null) {
+    var by_datatype = {};
+    results.forEach(function(r) { 
+      if (r && r.datatype && r.values) {
+        by_datatype[r.datatype] = by_datatype[r.datatype] || [];
+        for (var iv=0; iv<r.values.length; iv++) {
+          by_datatype[r.datatype].push(r.values[iv]);
+        }
+      }
+    });
+    var datatypes = Object.keys(by_datatype);
+    if (results == [null]) {
       return
     }
-    else if (result.datatype == 'ncnr.ospec.ospec2d' && result.values.length > 0) {
+    else if (datatypes.length == 1 && ('ncnr.ospec.ospec2d' in by_datatype) && by_datatype['ncnr.ospec.ospec2d'].length > 0) {
       //plottable = result.values.slice(-1)[0].plottable[0];
       plottable = {
         "type": "2d", 
-        "datas": result.values
+        "datas": by_datatype['ncnr.ospec.ospec2d']
       }
     }
-    else if (result.datatype == 'ncnr.ospec.ospec1d' && result.values.length > 0) {
-      plottable = result.values.slice(-1)[0][0];
+    else if (datatypes.length == 1 && ('ncnr.ospec.ospec1d' in by_datatype) && by_datatype['ncnr.ospec.ospec1d'].length > 0) {
+      plottable = by_datatype['ncnr.ospec.ospec1d'].slice(-1)[0][0];
     }
-    else if (result.datatype == 'ncnr.ospec.ospecnd' && result.values.length > 0) {
-      plottable = plot_ospec_nd(result.values);
+    else if (datatypes.length == 1 && ('ncnr.ospec.ospecnd' in by_datatype) && by_datatype['ncnr.ospec.ospecnd'].length > 0) {
+      plottable = plot_ospec_nd(by_datatype['ncnr.ospec.ospecnd']);
     }
-    else if (result.datatype == 'ncnr.ospec.params') {
-      plottable = {"type": "params", "params": result.values}
+    else if (datatypes.length == 1 && ('ncnr.ospec.params' in by_datatype) && by_datatype['ncnr.ospec.params'].length > 0) {
+      plottable = {"type": "params", "params": by_datatype['ncnr.ospec.params']}
     }
     return plottable
   };

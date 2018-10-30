@@ -75,7 +75,46 @@ webreduce.instruments['ncnr.refl'] = webreduce.instruments['ncnr.refl'] || {};
     return result;
   }
   
-  function plot_refl(refl_objs) {
+  function plot_refl_1d(refl_objs) {
+    var series = [];
+    var datas = [];
+    refl_objs.forEach(function(entry) {
+      var xdata = get_refl_item(entry, 'x');
+      var xerr = get_refl_item(entry, 'dx');
+      var ydata = get_refl_item(entry, 'v');
+      var yerr = get_refl_item(entry, 'dv');
+      var data = xdata.map(function(x, i) {
+        let y = ydata[i];
+        let dy = yerr[i];
+        let dx = xerr[i]; 
+        var point = [x, y, {
+          "yupper": y+dy, "ylower": y-dy,
+          "xupper": x+dx, "xlower": x-dx
+        }];
+        return point
+      });
+      
+      datas.push(data);
+      series.push({label: entry.name + ":" + entry.entry});
+
+    });
+    var xcol = 'x';
+    var ycol = 'v';
+    var data0 = refl_objs[0];
+    var plottable = {
+      type: "1d",      
+      options: {
+        series: series,
+        axes: {
+          xaxis: {label: data0.columns[xcol].label + "(" + data0.columns[xcol].units + ")"}, 
+          yaxis: {label: data0.columns[ycol].label + "(" + data0.columns[ycol].units + ")"}},
+        errorbar_width: 0,
+      },
+      data: datas
+    }
+    return plottable
+  }
+  function plot_refl_nd(refl_objs) {
     // entry_ids is list of {path: path, filename: filename, entryname: entryname} ids
     var series = new Array();
     var column_sets = refl_objs.map(function(ro) {
@@ -165,17 +204,45 @@ webreduce.instruments['ncnr.refl'] = webreduce.instruments['ncnr.refl'] || {};
     return plottable
   } 
   
-  instrument.plot = function(result) {
+  instrument.plot = function(results) {
     var plottable;
     var params_expression = /(\.params|\.poldata|\.deadtime)$/;
-    if (result == null || result.datatype == null) {
+    var by_datatype = {};
+    results.forEach(function(r) { 
+      if (r && r.datatype && r.values) {
+        by_datatype[r.datatype] = by_datatype[r.datatype] || [];
+        for (var iv=0; iv<r.values.length; iv++) {
+          by_datatype[r.datatype].push(r.values[iv]);
+        }
+      }
+    });
+    var datatypes = Object.keys(by_datatype);
+    //var datatypes = new Set();
+    //results.forEach(function(r) { if (r.datatype != null) {datatypes.add(r.datatype)}});
+    //if datatypes.size)
+    //var uniform_type = results.every(function(r) { return })
+    if (results == [null] || datatypes.length == 0 ) {
       return
     }
-    else if (result.datatype == 'ncnr.refl.refldata' && result.values.length > 0) {
-      plottable = plot_refl(result.values);
+    else if (datatypes.length == 1 && ('ncnr.refl.refldata' in by_datatype) && by_datatype['ncnr.refl.refldata'].length > 0) {
+      plottable = plot_refl_nd(by_datatype['ncnr.refl.refldata']);
     }
-    else if (result.datatype == 'ncnr.refl.footprint.params'){
-      plottable = {"type": "functional", "data": result.values}
+    else if (datatypes.length == 1 && ('ncnr.refl.footprint.params' in by_datatype) && by_datatype['ncnr.refl.footprint.params'].length > 0){
+      var values = by_datatype['ncnr.refl.footprint.params'];
+      var options = values[0].options;
+      plottable = {
+        "type": "1d_function", 
+        "data": [], 
+        "functions": values, 
+        "options": options
+      }
+    }
+    else if (
+        datatypes.length == 2 && 
+        ('ncnr.refl.refldata' in by_datatype) && 
+        ('ncnr.refl.footprint.params' in by_datatype)) {
+      plottable = plot_refl_1d(by_datatype['ncnr.refl.refldata']);
+      plottable.functions = by_datatype['ncnr.refl.footprint.params'];
     }
     else if (result.datatype.match(params_expression)) {
       plottable = {"type": "params", "params": result.values}
@@ -342,7 +409,7 @@ webreduce.instruments['ncnr.refl'] = webreduce.instruments['ncnr.refl'] || {};
   instrument.files_filter = function(x) {
     return (
       BRUKER_REGEXP.test(x) ||
-      ((NEXUZ_REGEXP.test(x) || NEXUS_REGEXP.test(x))&&
+      (NEXUZ_REGEXP.test(x) &&
          (/^(fp_)/.test(x) == false) &&
          (/^rapidscan/.test(x) == false) &&
          (/^scripted_findpeak/.test(x) == false))

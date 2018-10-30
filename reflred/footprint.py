@@ -7,9 +7,15 @@ from dataflow.lib.wsolve import wpolyfit
 from dataflow.lib.uncertainty import Uncertainty as U, interp
 
 class FootprintData(object):
-    def __init__(self, p, dp):
+    def __init__(self, p, dp, low=None, high=None):
         self.p = p
         self.dp = dp
+        self.low = low if low is not None else 0.1
+        self.high = high if high is not None else 1.0
+    
+    def eval(self, x):
+        return polyval(self.p, x)
+
     def get_metadata(self):
         #return {"p": self.p.tolist(), "dp": self.dp.tolist()}
         return {
@@ -22,7 +28,23 @@ class FootprintData(object):
             "intercept_fit_error": self.dp[1]
         }
     def get_plottable(self):
-        return self.get_metadata()
+        plottable = {
+            "params": {
+                "slope": self.p[0],
+                "slope_error": self.dp[0],
+                "intercept": self.p[1],
+                "intercept_error": self.dp[1]
+            },
+            "definition": "intercept + (slope * x)",
+            "options": {
+                "min_x": self.low,
+                "max_x": self.high,
+                "min_y": self.eval(self.low),
+                "max_y": self.eval(self.high)
+            },
+            "type": "1d_function"
+        }
+        return plottable
 
 def fit_footprint(data, low, high, kind='line'):
     """
@@ -48,7 +70,7 @@ def fit_footprint(data, low, high, kind='line'):
     dy = np.hstack(dy)
     if len(x):
         p, dp = _fit_footprint_data(x, y, dy, kind)
-        return FootprintData(p, dp)
+        return FootprintData(p, dp, low=low, high=high)
     else:
         return None
 
@@ -82,7 +104,7 @@ def fit_footprint_shared_range(data, low, high, kind='line'):
     idx = (x >= low) & (x <= high)
     x, y, dy = x[idx], y[idx], dy[idx]
     p, dp = _fit_footprint_data(x, y, dy, kind)
-    return FootprintData(p, dp)
+    return FootprintData(p, dp, low=low, high=high)
 
 
 def apply_fitted_footprint(data, fitted_footprint, range):

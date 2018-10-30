@@ -258,10 +258,10 @@ webreduce.editor = webreduce.editor || {};
           .map(function(d) {return im[d.id]})
         field_inputs.forEach(function(d) {
           d.values.forEach(function(v) {
-            $.extend(true, fields_in, v);
+            $.extend(true, fields_in, v.params);
           });
         });
-        webreduce.editor.show_plots(datasets_in);
+        webreduce.editor.show_plots([datasets_in]);
         fields.forEach(function(field) {
           if (webreduce.editor.make_fieldUI[field.datatype]) {
             var value;
@@ -320,29 +320,30 @@ webreduce.editor = webreduce.editor || {};
       .then(function(results) {
         var output;
         if (results.length < 1) { 
-          output = {"datatype": "none", "values": []} 
+          output = [{"datatype": "none", "values": []}]
         }
-        else { 
-          output = results[0];
-          for (var i=1; i<results.length; i++) {
-            if (results[i].datatype == output.datatype) {
-              output.values = output.values.concat(results[i].values);
-            }
-          }
+        else {
+          output = results; 
+          //output = results[0];
+          //for (var i=1; i<results.length; i++) {
+          //  if (results[i].datatype == output.datatype) {
+          //    output.values = output.values.concat(results[i].values);
+          //  }
+          //}
         }
         webreduce.editor.show_plots(output);
       });
   }
   
-  webreduce.editor.show_plots = function(result) {
+  webreduce.editor.show_plots = function(results) {
     var instrument_id = this._instrument_id;
-    var new_plotdata = webreduce.instruments[instrument_id].plot(result);
+    var new_plotdata = webreduce.instruments[instrument_id].plot(results);
     var active_plot;
     d3.select("#plot_title").text("");
     d3.select("#plotdiv").on("mouseover.setRawHandler", function() {
       d3.select("body").on("keydown.triggerRawDump", function() {
         if (d3.event.key.toLowerCase() == "r") {
-          console.log(result);
+          console.log(results);
         }
       })
     });
@@ -367,6 +368,9 @@ webreduce.editor = webreduce.editor || {};
     else if (new_plotdata.type == 'params') {
       active_plot = this.show_plots_params(new_plotdata);
     }
+    else if (new_plotdata.type == '1d_function'){
+      active_plot = this.show_plots_1df(new_plotdata);
+    }
     this._active_plot = active_plot;
     return active_plot;
   }
@@ -380,6 +384,39 @@ webreduce.editor = webreduce.editor || {};
         .classed("paramsDisplay", true)
         .text(function(d) {return JSON.stringify(d, null, 2)})
     return data
+  }
+
+  webreduce.editor.show_plots_1df = function(plotdata) {
+    var options = plotdata.options || {};
+    if (options.max_x == null) {
+      options.max_x = 1;
+    }
+    if (options.min_x == null) {
+      options.min_x = 0.1;
+    }
+    if (options.max_y == null) {
+      options.max_y = 1;
+    }
+    if (options.min_y == null) {
+      options.min_y = 0.1;
+    }
+    options.autoscale = false;
+    plotdata.options = options;
+
+    var functions = plotdata.functions || [];
+    var func_params = functions.map(function(f) { return f.params });
+    var chart = webreduce.editor.show_plots_1d(plotdata);
+    if (func_params.length > 0) {
+      var plotdiv = d3.select("#plotdiv");
+      var params_disp = plotdiv.append("div")
+        .classed("function-params", true)
+        .style("position", "absolute")
+        .style("left", "150px")
+        .style("top", "50px")
+        .append("pre")
+      params_disp.html(JSON.stringify(func_params, null, 2));
+    }
+    return chart;
   }
   
   webreduce.editor.show_plots_2d = function(plotdata) {
@@ -738,7 +775,32 @@ webreduce.editor = webreduce.editor || {};
     d3.selectAll("#plotdiv").selectAll("svg, div").remove();
     d3.selectAll("#plotdiv").data([plotdata.data]).call(mychart);
     mychart.zoomRect(true);
+    mychart.zoomScroll(true);
     webreduce.callbacks.resize_center = mychart.autofit;
+
+    // add any functions that are defined:
+    let series_offset = plotdata.data.length;
+    var functions = plotdata.functions || [];
+    // add display of function parameters:
+    functions.forEach( function(func, i) {
+      var functional;
+      with(func.params) (functional = eval("(function(x) { return (" + func.definition + ") })"));
+      var opts_function = {
+        type: "Function",
+        name: "myfunction",
+        show_lines: true,
+        color1: mychart.get_series_color(i+series_offset),
+        functional: functional
+      }
+      //func_params.push(func.params);
+      var func_interactor = new monotonicFunctionInteractor.default(opts_function);
+      mychart.interactors(func_interactor);
+      options.series[i+series_offset] = {label: func.definition };
+    });
+    // update the series:
+    mychart.options(options);
+    mychart.update();
+
     
     // set up plot control buttons and options:
     if (d3.select("#plot_controls").attr("plot_type") != "1d") {
@@ -799,6 +861,7 @@ webreduce.editor = webreduce.editor || {};
             webreduce.download(output, filename);
           });
     }
+    d3.select("#plot_title").html(options.title || "");
     
     return mychart
   }

@@ -339,7 +339,7 @@
         }
         return entry;
       });
-      var result = {"datatype": datatype, "values": entries}
+      var result = [{"datatype": datatype, "values": entries}]
       webreduce.editor._active_plot = webreduce.editor.show_plots(result);
     });
   }
