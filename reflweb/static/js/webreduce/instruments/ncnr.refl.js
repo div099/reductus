@@ -220,8 +220,8 @@ webreduce.instruments['ncnr.refl'] = webreduce.instruments['ncnr.refl'] || {};
       plottable = plot_refl_1d(by_datatype['ncnr.refl.refldata']);
       plottable.functions = by_datatype['ncnr.refl.footprint.params'];
     }
-    else if (result.datatype.match(params_expression)) {
-      plottable = {"type": "params", "params": result.values}
+    else if (datatypes.length == 1 && datatypes[0].match(params_expression) && by_datatype[datatypes[0]].length > 0) {
+      plottable = {"type": "params", "params": by_datatype[datatypes[0]]}
     }
     return plottable;
   };
