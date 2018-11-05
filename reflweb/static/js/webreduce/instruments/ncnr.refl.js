@@ -122,17 +122,6 @@ webreduce.instruments['ncnr.refl'] = webreduce.instruments['ncnr.refl'] || {};
       var nscans = (ro.scan_value || []).length;
       var sv = ro.scan_value || [];
       var nscans = sv.length;
-      /*
-      sv.forEach(function(s,i) {
-        var new_col = {};
-        var new_label = ro.scan_label[i];
-        new_col.label = new_label;
-        new_col.is_scan = true;
-        var new_units = ro.scan_units[i];
-        if (new_units) { new_col.units = new_units }
-        columns[new_label] = new_col
-      })
-      */
       return columns;
     });
     var datas = [], xcol;
@@ -149,20 +138,7 @@ webreduce.instruments['ncnr.refl'] = webreduce.instruments['ncnr.refl'] || {};
         }
       }
     });
-    /*
-    var all_columns = d3.set(column_names[0]); // start with the first set
-    column_names.forEach(function(new_cols) {
-      // if this has columns names that the previous do not, ignore;
-      // likewise, if it does not have column names that did exist, throw those out.
-      all_columns.forEach(function(cn) {
-        if (new_cols.indexOf(cn) < 0) {
-          this.remove(cn);
-        }
-      });
-    });
-    // ... then convert back to an array.
-    all_columns = all_columns.values();
-    */
+    
     refl_objs.forEach(function(entry) {
       var intent = entry['intent'];
       var colset = {}
