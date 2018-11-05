@@ -324,12 +324,6 @@ webreduce.editor = webreduce.editor || {};
         }
         else {
           output = results; 
-          //output = results[0];
-          //for (var i=1; i<results.length; i++) {
-          //  if (results[i].datatype == output.datatype) {
-          //    output.values = output.values.concat(results[i].values);
-          //  }
-          //}
         }
         webreduce.editor.show_plots(output);
       });
