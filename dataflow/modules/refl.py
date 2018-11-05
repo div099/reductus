@@ -44,7 +44,7 @@ class FluxData(object):
             "total_flux": self.total_flux
         }
     def get_plottable(self):
-        return self.get_metadata()
+        return {"params": self.get_metadata()}
     def export(self):
         import json
         export_string = json.dumps(self.get_metadata(), indent=2)
