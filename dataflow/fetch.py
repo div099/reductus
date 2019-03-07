@@ -89,6 +89,7 @@ def url_get(fileinfo, mtime_check=True):
     if cache.exists(fp):
         ret = cache.get(fp)
         print("getting " + path + " from cache!")
+        #print("cached file:", cache.cachedir + "/" + fp)
     else:
         source = fileinfo.get("source", DEFAULT_DATA_SOURCE)
         name = basename(path)
