@@ -176,7 +176,7 @@ def play_file(filename):
 
     if export['values']:
         basename = export['values'][0].get('name', 'replay')
-        ext = export['values'][0].get('file_suffix', '.refl') 
+        ext = export['values'][0].get('file_suffix', '.refl')
         filename = basename + ext
     else:
         filename = 'replay.dat'
