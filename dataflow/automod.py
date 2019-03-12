@@ -425,7 +425,7 @@ parameter_re = re.compile(r"""\A
     \s*([{]\s*(?P<label>.*?)\s*[}])?         # { label }    (optional)
     \s*([(]                                  # (
         \s*(?P<datatype>.*?)                 #    datatype  (non-greedy)
-        \s*([[]\s*(?P<length>[0-9]*)\s*[]])? #    [length]  (optional)
+        \s*([\[]\s*(?P<length>[0-9]*)\s*[]])? #    [length]  (optional)
         \s*(?P<multiple>[?*+])?              #    multiple  (optional [*+?])
         \s*(:\s*(?P<typeattr>.*?))?          #    :typeattr (optional)
     \s*[)])?                                 # )
