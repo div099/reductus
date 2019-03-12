@@ -33,7 +33,7 @@ def data_as(group, fieldname, units, rep=1):
     if fieldname not in group:
         return np.NaN
     field = group[fieldname]
-    converter = unit.Converter(field.attrs.get('units', ''))
+    converter = unit.Converter(decode_str(field.attrs.get('units', '')))
     value = converter(field.value, units)
     if rep != 1:
         if value.shape[0] == 1:
@@ -52,7 +52,7 @@ def nxfind(group, nxclass):
     Iterate over the entries of type *nxclass* in the hdf5 *group*.
     """
     for entry in group.values():
-        if nxclass == entry.attrs.get('NX_class', None):
+        if nxclass == decode_str(entry.attrs.get('NX_class', None)):
             yield entry
 
 
@@ -80,8 +80,8 @@ def load_nexus_entries(filename, file_obj=None, entries=None,
     for name, entry in file.items():
         if entries is not None and name not in entries:
             continue
-        if entry.attrs.get('NX_class', None) == 'NXentry':
-            data = NCNRNeXusRefl(entry, name, filename)
+        if decode_str(entry.attrs.get('NX_class', None)) == 'NXentry':
+            data = entry_loader(entry, name, filename)
             if not meta_only:
                 data.load(entry)
             measurements.append(data)
@@ -160,12 +160,27 @@ def h5_close_zip(f):
         os.unlink(path)
 
 
+def decode_str(s):
+    return s.decode('utf-8') if isinstance(s, bytes) else s
+
+def fetch_str(group, field, default=''):
+    if field in group:
+        return decode_str(group[field][0])
+    else:
+        return default
+
+def fetch_list(group, field):
+    if field in group:
+        return [decode_str(s) for s in group[field]]
+    else:
+        return []
+
 def nexus_common(self, entry, entryname, filename):
     #print(entry['instrument'].values())
     das = entry['DAS_logs']
     self.entry = entryname
     self.path = os.path.abspath(filename)
-    self.name = das['trajectoryData/fileName'][0] if 'trajectoryData/fileName' in das else 'unknown'
+    self.name = fetch_str(das, 'trajectoryData/fileName', 'uknown')
     if 'trajectoryData/fileNum' in das:
         self.filenumber = das['trajectoryData/fileNum'][0]
     else:
@@ -173,10 +188,9 @@ def nexus_common(self, entry, entryname, filename):
         from random import randint
         self.filenumber = -randint(10**9, (10**10) - 1)
 
-    #self.date = iso8601.parse_date(entry['start_time'][0].decode('utf-8'))
-    self.date = iso8601.parse_date(entry['start_time'][0])
-    self.description = entry['experiment_description'][0]
-    self.instrument = entry['instrument/name'][0]
+    self.date = iso8601.parse_date(fetch_str(entry, 'start_time'))
+    self.description = fetch_str(entry, 'experiment_description')
+    self.instrument = fetch_str(entry, 'instrument/name')
 
     # Determine the number of points in the scan.
     # TODO: Reliable way to determine scan length.
@@ -197,14 +211,14 @@ def nexus_common(self, entry, entryname, filename):
     monitor_device = entry.get('control/monitor', {})
     self.monitor.deadtime = data_as(monitor_device, 'dead_time','us')
     self.monitor.deadtime_error = data_as(monitor_device, 'dead_time_error', 'us')
-    self.monitor.base = das['counter/countAgainst'][0]
+    self.monitor.base = fetch_str(das, 'counter/countAgainst', '')
     self.monitor.time_step = 0.001  # assume 1 ms accuracy on reported clock
     self.monitor.counts = np.asarray(data_as(das, 'counter/liveMonitor', '', rep=n), 'd')
     self.monitor.counts_variance = self.monitor.counts.copy()
     self.monitor.count_time = data_as(das, 'counter/liveTime', 's', rep=n)
 
-    self.sample.name = entry['sample/name'][0] if 'name' in entry['sample'] else ""
-    self.sample.description = entry['sample/description'][0] if 'description' in entry['sample'] else ""
+    self.sample.name = fetch_str(entry, 'sample/name')
+    self.sample.description = fetch_str(entry, 'sample/description')
 
     # TODO: stop trying to guess DOI
     if 'DOI' in entry:
@@ -214,11 +228,11 @@ def nexus_common(self, entry, entryname, filename):
         #NCNR_DOI = "10.18434/T4201B"
         NCNR_DOI = "https://ncnr.nist.gov/pub/ncnrdata"
         LOCATION = {'pbr':'ngd', 'magik':'cgd', 'ng7r':'ng7', 'candor':'cdr'}
-        nice_instrument = str(das['experiment/instrument'].value[0]).lower()
+        nice_instrument = fetch_str(das, 'experiment/instrument').lower()
         instrument = LOCATION.get(nice_instrument, nice_instrument)
         year, month = self.date.year, self.date.month
         cycle = "%4d%02d"%(year, month)
-        experiment = str(entry['experiment_identifier'].value[0])
+        experiment = fetch_str(entry, 'experiment_identifier')
         filename = os.path.basename(self.path)
         URI = "/".join((NCNR_DOI, instrument, cycle, experiment, "data", filename))
     self.uri = URI
@@ -228,12 +242,14 @@ def nexus_common(self, entry, entryname, filename):
     self.scan_label = []
     SCANNED_VARIABLES = 'trajectory/scannedVariables'
     if SCANNED_VARIABLES in das:
-        scanned_variables = das[SCANNED_VARIABLES].value
+        scanned_variables = fetch_list(das, SCANNED_VARIABLES)
         # Just in case the scanned variables is a string with
         # elements separated by new lines...
         if len(scanned_variables) == 1:
-            scanned_variables = str(scanned_variables[0]).split('\n')
-        scanned_variables = [s for s in scanned_variables if not s.startswith("areaDetector")]
+            scanned_variables = scanned_variables[0].split('\n')
+        # TODO: exclude count fields from scanned variables
+        #scanned_variables = [s for s in scanned_variables
+        #                     if not s.startswith("areaDetector")]
         for node_id in scanned_variables:
             path = node_id.replace('.', '/')
             try:
@@ -244,8 +260,8 @@ def nexus_common(self, entry, entryname, filename):
                 continue
             try:
                 scan_value = data_as(das, path, '', rep=n)
-                scan_units = field.attrs.get('units', '')
-                scan_label = field.attrs.get('label', node_id)
+                scan_units = decode_str(field.attrs.get('units', ''))
+                scan_label = decode_str(field.attrs.get('label', node_id))
             except Exception:
                 print(">>> unexpected error reading %s for %s"
                         % (node_id, os.path.basename(self.path)))
@@ -256,11 +272,12 @@ def nexus_common(self, entry, entryname, filename):
                 self.scan_units.append(scan_units)
                 self.scan_label.append(scan_label)
 
-    # TODO: field
+    # TODO: magnetic field
     if 'temp' in das:
         if 'temp/primaryControlLoop' in das:
             temp_primaryControlLoop = das['temp/primaryControlLoop'].value
-            self.sample.temp_setpoint = data_as(das, 'temp/setpoint_%d' % (temp_primaryControlLoop), 'K')[0]
+            setpoint_field = 'temp/setpoint_%d' % (temp_primaryControlLoop,)
+            self.sample.temp_setpoint = data_as(das, setpoint_field, 'K')[0]
         temp_values = data_as(das, 'temp/primaryNode/value', 'K')
         temp_shape = temp_values.shape[0] if temp_values.shape[0] else 1.0;
         # only include one significant figure for temperatures.
@@ -269,7 +286,7 @@ def nexus_common(self, entry, entryname, filename):
 
 def get_pol(das, pol):
     if pol in das:
-        direction = das[pol+'/direction'][0]
+        direction = fetch_str(das, pol+'/direction')
         if direction == 'UP':
             result = '+'
         elif direction == 'DOWN':
@@ -423,7 +440,7 @@ def demo(loader=load_entries):
             entries = load_from_uri(filename, loader=loader)
         except Exception as exc:
             print("**** "+str(exc)+" **** while reading "+filename)
-            #raise
+            raise
             continue
 
         # print the first entry

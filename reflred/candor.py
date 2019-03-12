@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+import numpy as np
 
 from .refldata import ReflData
-from .nexusref import load_nexus_entries, data_as
+from . import nexusref
+from .nexusref import data_as, fetch_str
 
 def load_metadata(filename, file_obj=None):
     """
@@ -11,8 +13,8 @@ def load_metadata(filename, file_obj=None):
                         meta_only=True, entry_loader=Candor)
 
 def load_entries(filename, file_obj=None, entries=None):
-    return load_nexus_entries(filename, file_obj=file_obj,
-                              meta_only=False, entry_loader=Candor)
+    return nexusref.load_nexus_entries(filename, file_obj=file_obj,
+                                       meta_only=False, entry_loader=Candor)
 
 
 class Candor(ReflData):
@@ -25,24 +27,24 @@ class Candor(ReflData):
     probe = "neutron"
 
     def __init__(self, entry, entryname, filename):
-        super(NCNRNeXusRefl, self).__init__()
-        _nexus_common(entry, entryname, filename)
-        self._set_metadata(entry)
+        super(Candor, self).__init__()
+        nexusref.nexus_common(self, entry, entryname, filename)
 
-    def _set_metadata(self, entry):
+    def load(self, entry):
         #print(entry['instrument'].values())
         das = entry['DAS_logs']
+        n = self.points
 
         self.slit1.distance = data_as(entry, 'instrument/presample_slit1/distance', 'mm')
         self.slit2.distance = data_as(entry, 'instrument/presample_slit2/distance', 'mm')
         self.slit3.distance = data_as(entry, 'instrument/predetector_slit1/distance', 'mm')
         self.slit4.distance = data_as(entry, 'instrument/detector_mask/distance', 'mm')
 
-        raw_intent = das['trajectoryData/_scanType'][0] if 'trajectoryData/_scanType' in das else ""
-        if raw_intent in TRAJECTORY_INTENTS:
-            self.intent = TRAJECTORY_INTENTS[raw_intent]
-        self.polarization = _get_pol(das, 'frontPolarization') \
-                            + _get_pol(das, 'backPolarization')
+        raw_intent = fetch_str(das, 'trajectoryData/_scanType')
+        if raw_intent in nexusref.TRAJECTORY_INTENTS:
+            self.intent = nexusref.TRAJECTORY_INTENTS[raw_intent]
+        self.polarization = nexusref.get_pol(das, 'frontPolarization') \
+                            + nexusref.get_pol(das, 'backPolarization')
 
         if np.isnan(self.slit1.distance):
             self.warn("Slit 1 distance is missing; using 4600 mm")
@@ -64,25 +66,6 @@ class Candor(ReflData):
             self.warn("Wavelength resolution is missing; using 1.5% dL/L FWHM")
             self.detector.wavelength_resolution = 0.015/2.35*self.detector.wavelength
 
-        # TODO: stop trying to guess DOI
-        if 'DOI' in entry:
-            URI = entry['DOI']
-        else:
-            # See: dataflow.modules.doi_resolve for helpers.
-            #NCNR_DOI = "10.18434/T4201B"
-            NCNR_DOI = "https://ncnr.nist.gov/pub/ncnrdata"
-            LOCATION = {'pbr':'ngd', 'magik':'cgd', 'ng7r':'ng7'}
-            nice_instrument = str(das['experiment/instrument'].value[0]).lower()
-            instrument = LOCATION.get(nice_instrument, nice_instrument)
-            year, month = self.date.year, self.date.month
-            cycle = "%4d%02d"%(year, month)
-            experiment = str(entry['experiment_identifier'].value[0])
-            filename = os.path.basename(self.path)
-            URI = "/".join((NCNR_DOI, instrument, cycle, experiment, "data", filename))
-        self.uri = URI
-
-    def load(self, entry):
-        das = entry['DAS_logs']
         self.detector.counts = np.asarray(data_as(entry, 'instrument/detector/data', ''), 'd')
         self.detector.counts_variance = self.detector.counts.copy()
         self.detector.dims = self.detector.counts.shape[1:]
@@ -107,7 +90,8 @@ class Candor(ReflData):
 
         table_angle = data_as(das, 'detectorTableMotor/softPosition', 'degree', rep=n)
         table_angle_target = data_as(das, 'detectorTableMotor/desiredSoftPosition', 'degree', rep=n)
-        bank_angle = das['detectorTable/rowAngleOffset'].value
+        #bank_angle = das['detectorTable/rowAngleOffset'].value
+        bank_angle = np.arange(30)*0.1
         self.detector.angle_x = table_angle[:, None] + bank_angle[None, :]
         self.detector.angle_x = table_angle_target[:, None] + bank_angle[None, :]
 
