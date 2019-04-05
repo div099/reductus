@@ -1002,11 +1002,11 @@ def subtract_background_field(data, bfparams, epsD=None, epsD_var=None, scale=No
     return data
 
 @module
-def divide_intensity(data, base):
+def divide_intensity(data, base, align_by="angular_resolution"):
     """
     Scale data by incident intensity.
 
-    Data is matched according to angular resolution, assuming all data with
+    Data is matched according to angular resolution by default, assuming all data with
     the same angular resolution was subject to the same incident intensity.
 
     **Inputs**
@@ -1015,18 +1015,22 @@ def divide_intensity(data, base):
 
     base (refldata) : intensity data
 
+    align_by (str) : data column to align on (for regular slit scans, 
+    this should be "angular_resolution")
+
     **Returns**
 
     output (refldata) : reflected intensity
 
     2015-12-17 Paul Kienzle
+    2019-02-26 Brian Maranville: adding align_by parameter
     """
     if base is not None:
         from .scale import apply_intensity_norm
         data = copy(data)
         data.log("divide(base)")
         data.log_dependency("base", base)
-        apply_intensity_norm(data, base)
+        apply_intensity_norm(data, base, align_by=align_by)
     return data
 
 
@@ -1308,7 +1312,8 @@ def super_load(filelist=None,
                intent='auto',
                Qz_basis='actual',
                sample_width=None,
-               base='auto'):
+               base='auto',
+               horizontal_mode=False):
     r"""
     Load a list of nexus files from the NCNR data server.
 
@@ -1351,6 +1356,9 @@ def super_load(filelist=None,
     base {Normalize by} (opt:auto|monitor|time|power|none)
     : how to convert from counts to count rates
 
+    horizontal_mode {MAGIK horizontal mode} (bool)
+    : Load data from MAGIK being run in slit-defined horizontal reflectometry mode
+
     **Returns**
 
     output (refldata[]): All entries of all files in the list.
@@ -1382,7 +1390,7 @@ def super_load(filelist=None,
     auto_divergence = True
 
     datasets = []
-    for data in url_load_list(filelist):
+    for data in url_load_list(filelist, horizontal_mode=horizontal_mode):
         data.Qz_basis = Qz_basis
         if intent not in [None, 'auto']:
             data.intent = intent

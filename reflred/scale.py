@@ -8,10 +8,10 @@ def apply_rescale(data, scale, dscale):
     data.v, data.dv = I, np.sqrt(varI)
 
 
-def apply_intensity_norm(data, base):
+def apply_intensity_norm(data, base, align_by='angular_resolution'):
     assert data.normbase == base.normbase, "can't mix time and monitor normalized data"
-    S, varS = err1d.interp(data.angular_resolution,
-                           base.angular_resolution, base.v, base.dv**2)
+    S, varS = err1d.interp(getattr(data, align_by),
+                           getattr(base, align_by), base.v, base.dv**2)
     I, varI = err1d.div(data.v, data.dv**2, S, varS)
     data.v, data.dv = I, np.sqrt(varI)
     

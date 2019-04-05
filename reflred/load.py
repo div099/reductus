@@ -19,14 +19,14 @@ def check_datasource(source):
     if not source in DATA_SOURCES:
         raise RuntimeError("Need to set reflred.steps.load.DATA_SOURCES['" + source + "'] first!")
 
-def url_load(fileinfo, check_timestamps=True):
+def url_load(fileinfo, check_timestamps=True, horizontal_mode=False):
     path, mtime, entries = fileinfo['path'], fileinfo.get('mtime', None), fileinfo.get('entries', None)
     filename = basename(path)
     content = url_get(fileinfo, mtime_check=check_timestamps)
     if filename.endswith('.raw') or filename.endswith('.ras'):
         return xrawref.load_from_string(filename, content, entries=entries)
     else:
-        return nexusref.load_from_string(filename, content, entries=entries)
+        return nexusref.load_from_string(filename, content, entries=entries, horizontal_mode=horizontal_mode)
 
 def find_mtime(path, source="ncnr"):
     check_datasource(source)
@@ -41,8 +41,10 @@ def find_mtime(path, source="ncnr"):
     return {'path': path, 'mtime': timestamp, 'source': source, 'entries': None}
 
 
-def url_load_list(files=None, check_timestamps=True):
+def url_load_list(files=None, check_timestamps=True, horizontal_mode=False):
     if files is None:
         return []
-    result = [entry for fileinfo in files for entry in url_load(fileinfo, check_timestamps=check_timestamps)]
+    result = []
+    for fileinfo in files:
+        result.extend(url_load(fileinfo, check_timestamps=check_timestamps, horizontal_mode=horizontal_mode))
     return result
