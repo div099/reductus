@@ -368,40 +368,44 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
         module = this.active_module;
     
     var local_datum = (multiple) ? datum : [datum];
-    
-    for (var di=0; di<local_datum.length; di++) {
-      var datum = local_datum[di];
-      target.append("div").append("label").text(field.label);
-      var input = target.append("div")
-        .classed("fields", true)
-        .datum(local_datum)
+    target.append("div").append("label").text(field.label);
+
+    var input = target.append("div")
+      .classed("fields", true)
       
-      var subfields = []
-        .concat((/x/.test(axis)) ? ["xmin", "xmax"] : [])
-        .concat((/y/.test(axis)) ? ["ymin", "ymax"] : [])
-        .concat((/^ellipse$/.test(axis)) ? ["cx", "cy", "rx", "ry"] : []);
-      var subinputs = input.selectAll("div.subfield").data(subfields).enter()
+    var many_inputs = input.data(local_datum)
+      .enter()
+      .append("div")
+
+    var subfields = []
+      .concat((/x/.test(axis)) ? ["xmin", "xmax"] : [])
+      .concat((/y/.test(axis)) ? ["ymin", "ymax"] : [])
+      .concat((/^ellipse$/.test(axis)) ? ["cx", "cy", "rx", "ry"] : []);
+    
+    many_inputs.each(function(dd,di) {
+      var this_input = d3.select(this);
+      var subinputs = this_input.selectAll("div.subfield").data(subfields).enter()
         .append("div")
         .classed("subfield", true)
         .append("label")
         .text(function(d) {return d})
           .append("input")
             .attr("type", "text")
-            .attr("placeholder", function(d,i) { return (datum.default_value || [])[i] })
+            .attr("placeholder", function(d,i) { return (dd.default_value || [])[i] })
             .on("change", function(d,i) { 
-              if (datum.value == null) { datum.value = datum.default_value }
-              datum.value[i] = parseFloat(this.value);
+              if (dd.value == null) { dd.value = dd.default_value }
+              dd.value[i] = parseFloat(this.value);
             });
       subinputs
-        .attr("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
-        .property("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
+        .attr("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
+        .property("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
             
       if (this.add_interactors) {
         var active_plot = this.active_plot;
         if (axis == 'x' && active_plot &&  active_plot.interactors) {
           // add x-range interactor
           var xrange = active_plot.x().domain();
-          var value = datum.value || datum.default_value;
+          var value = dd.value || dd.default_value;
           var value = [
             (value[0] == null) ? xrange[0] : value[0],
             (value[1] == null) ? xrange[1] : value[1]
@@ -417,20 +421,20 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           var interactor = new xSliceInteractor.default(opts);
           active_plot.interactors(interactor);
           subinputs.on("change", function(d,i) { 
-            if (datum.value == null) { datum.value = datum.default_value }
+            if (dd.value == null) { dd.value = dd.default_value }
             var v = parseFloat(this.value);
             v = (isNaN(v)) ? null : v;
-            datum.value[i] = v;
+            dd.value[i] = v;
             var xitem = ["x1", "x2"][i];
             interactor.state[xitem] = (v == null) ? xrange[i] : v;
             interactor.update(false);
           });
           interactor.dispatch.on("update", function() { 
             var state = interactor.state;
-            datum.value = [state.x1, state.x2];
+            dd.value = [state.x1, state.x2];
             subinputs
-              .property("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
-              .attr("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
+              .property("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
+              .attr("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
             var event = document.createEvent('Event');
             event.initEvent('input', true, true);
             subinputs.node().dispatchEvent(event);
@@ -444,7 +448,7 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           // add box interactor
           var xrange = active_plot.x().domain(),
               yrange = active_plot.y().domain();
-          var value = datum.value || datum.default_value;
+          var value = dd.value || dd.default_value;
           var value = [
             (value[0] == null) ? xrange[0] : value[0],
             (value[1] == null) ? xrange[1] : value[1],
@@ -468,10 +472,10 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           active_plot.interactors(interactor);
           // bind the update after init, so that it doesn't alter the field at init.
           subinputs.on("change", function(d,i) { 
-            if (datum.value == null) { datum.value = datum.default_value }
+            if (dd.value == null) { dd.value = dd.default_value }
             var v = parseFloat(this.value);
             v = (isNaN(v)) ? null : v;
-            datum.value[i] = v;
+            dd.value[i] = v;
             var item = ["xmin", "xmax", "ymin", "ymax"][i];
             var default_value = (i<2) ? xrange[i] : yrange[i-2];
             interactor.state[item] = (v == null) ? default_value : v;
@@ -479,10 +483,10 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           });
           interactor.dispatch.on("update", function() { 
             var state = interactor.state;
-            datum.value = [state.xmin, state.xmax, state.ymin, state.ymax];
+            dd.value = [state.xmin, state.xmax, state.ymin, state.ymax];
             subinputs
-              .property("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
-              .attr("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
+              .property("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
+              .attr("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
             var event = document.createEvent('Event');
             event.initEvent('input', true, true);
             subinputs.node().dispatchEvent(event);
@@ -492,7 +496,7 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           // add ellipse interactor
           var xrange = active_plot.x().domain(),
               yrange = active_plot.y().domain();
-          var value = datum.value || datum.default_value;
+          var value = dd.value || dd.default_value;
           var value = [
             (value[0] == null) ? (xrange[0] + xrange[1])/2 : value[0],
             (value[1] == null) ? (yrange[0] + yrange[1])/2 : value[1],
@@ -517,10 +521,10 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           active_plot.interactors(interactor);
           // bind the update after init, so that it doesn't alter the field at init.
           subinputs.on("change", function(d,i) { 
-            if (datum.value == null) { datum.value = datum.default_value }
+            if (dd.value == null) { dd.value = dd.default_value }
             var v = parseFloat(this.value);
             v = (isNaN(v)) ? null : v;
-            datum.value[i] = v;
+            dd.value[i] = v;
             var item = ["cx", "cy", "rx", "ry"][i];
             var default_value = (i == 0 || i == 2) ? (xrange[0] + xrange[1])/2 : (yrange[0] + yrange[1])/2;
             interactor.state[item] = (v == null) ? default_value : v;
@@ -528,10 +532,10 @@ webreduce.editor.make_fieldUI = webreduce.editor.make_fieldUI || {};
           });
           interactor.dispatch.on("update", function() { 
             var state = interactor.state;
-            datum.value = [state.xmin, state.xmax, state.ymin, state.ymax];
+            dd.value = [state.xmin, state.xmax, state.ymin, state.ymax];
             subinputs
-              .property("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
-              .attr("value", function(d,i) { return (datum.value) ? datum.value[i] : null })
+              .property("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
+              .attr("value", function(d,i) { return (dd.value) ? dd.value[i] : null })
             var event = document.createEvent('Event');
             event.initEvent('input', true, true);
             subinputs.node().dispatchEvent(event);
