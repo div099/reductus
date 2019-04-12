@@ -936,7 +936,7 @@ def addSimple(data):
 
 @cache
 @module
-def makeDIV(data1, data2, patchbox=(55, 74, 53, 72)):
+def makeDIV(data1, data2, patchbox=[(55, 74, 53, 72)]):
     """
     Use data2 to patch the beamstop from data1 within the defined box, then
     divide by total counts and multiply by number of pixels.
@@ -947,7 +947,7 @@ def makeDIV(data1, data2, patchbox=(55, 74, 53, 72)):
 
     data2 (sans2d): measurement to get the patch from
 
-    patchbox (range:xy): box to apply the patch in
+    patchbox (range[]+:xy): box to apply the patch in
 
     **Returns**
 
