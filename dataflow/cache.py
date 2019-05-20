@@ -112,9 +112,10 @@ class CacheManager(object):
         """
         Set up cache for testing.
         """
-        cachedir = os.path.join(tempfile.gettempdir(), "reductus_test")
-        self._cache = memory_cache()
-        self._file_cache = file_cache(cachedir=cachedir)
+        if self._cache is None:
+            cachedir = os.path.join(tempfile.gettempdir(), "reductus_test")
+            self._cache = memory_cache()
+            self._file_cache = file_cache(cachedir=cachedir)
 
     def use_diskcache(self, **kwargs):
         """
@@ -147,7 +148,7 @@ class CacheManager(object):
 
     def get_cache_manager(self):
         """
-        Connect to the key-value cache, and return this manager class.
+        Connect to the key-value cache and return this manager class.
         """
         if self._cache is None:
             self._connect()
