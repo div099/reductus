@@ -39,6 +39,19 @@ class Candor(ReflData):
         self.slit2.distance = data_as(entry, 'instrument/presample_slit2/distance', 'mm')
         self.slit3.distance = data_as(entry, 'instrument/predetector_slit1/distance', 'mm')
         self.slit4.distance = data_as(entry, 'instrument/detector_mask/distance', 'mm')
+        self.monochromator.wavelength = data_as(entry, 'instrument/monochromator/wavelength', 'Ang', rep=n)
+        self.monochromator.wavelength_resolution = data_as(entry, 'instrument/monochromator/wavelength_error','Ang', rep=n)
+        L = data_as(das, 'detectorTable/wavelengths', 'Ang')
+        dLoL = data_as(das, 'detectorTable/wavelengthSpreads', '')
+        L = L.reshape(1, -1, 54)
+        dLoL = dLoL.reshape(1, -1, 54)
+        self.detector.wavelength = L
+        self.detector.wavelength_resolution = L * dLoL
+
+        if np.isnan(self.monochromator.wavelength):
+            self.monochromator.wavelength = self.detector.wavelength
+            self.monochromator.wavelength_resolution = self.detector.wavelength_resolution
+
 
         raw_intent = fetch_str(das, 'trajectoryData/_scanType')
         if raw_intent in nexusref.TRAJECTORY_INTENTS:
@@ -46,31 +59,9 @@ class Candor(ReflData):
         self.polarization = nexusref.get_pol(das, 'frontPolarization') \
                             + nexusref.get_pol(das, 'backPolarization')
 
-        if np.isnan(self.slit1.distance):
-            self.warn("Slit 1 distance is missing; using 4600 mm")
-            self.slit1.distance = -4600
-        if np.isnan(self.slit2.distance):
-            self.warn("Slit 2 distance is missing; using 356 mm")
-            self.slit2.distance = -356
-        if np.isnan(self.slit3.distance):
-            self.warn("Slit 3 distance is missing; using 356 mm")
-            self.slit1.distance = 356
-        if np.isnan(self.slit4.distance):
-            self.warn("Slit 4 distance is missing; using 3496 mm")
-            self.slit1.distance = 3496
-
-        if np.isnan(self.detector.wavelength):
-            self.warn("Wavelength is missing; using 4.75 A")
-            self.detector.wavelength = 4.75
-        if np.isnan(self.detector.wavelength_resolution):
-            self.warn("Wavelength resolution is missing; using 1.5% dL/L FWHM")
-            self.detector.wavelength_resolution = 0.015/2.35*self.detector.wavelength
-
-        self.detector.counts = np.asarray(data_as(entry, 'instrument/detector/data', ''), 'd')
+        self.detector.counts = np.asarray(data_as(das, 'areaDetector/counts', ''), 'd')
         self.detector.counts_variance = self.detector.counts.copy()
         self.detector.dims = self.detector.counts.shape[1:]
-        self.detector.wavelength = data_as(entry, 'instrument/detector/wavelength','Ang', rep=n)
-        self.detector.wavelength_resolution = data_as(entry, 'instrument/detector/wavelength_error','Ang', rep=n)
         for k, s in enumerate((self.slit1, self.slit2, self.slit3)):
             x = 'slitAperture%d/softPosition'%(k+1)
             x_target = 'slitAperture%d/desiredSoftPosition'%(k+1)
@@ -85,16 +76,19 @@ class Candor(ReflData):
         self.slit4.x_target = self.slit4.x
         #self.slit4.y = data_as(entry, 'instrument/detector_mask/height', 'mm', rep=n)
         #self.slit4.y_target = self.slit4.y
-        self.sample.angle_x = data_as(das, 'sampleAngle/softPosition', 'degree', rep=n)
-        self.sample.angle_x_target = data_as(das, 'sampleAngle/desiredSoftPosition', 'degree', rep=n)
+        self.sample.angle_x = data_as(das, 'sampleAngleMotor/softPosition', 'degree', rep=n)
+        self.sample.angle_x_target = data_as(das, 'sampleAngleMotor/desiredSoftPosition', 'degree', rep=n)
+        # Add an extra dimension to sample angle
+        self.sample.angle_x = self.sample.angle_x[:, None, None]
+        self.sample.angle_x_target = self.sample.angle_x[:, None, None]
 
         table_angle = data_as(das, 'detectorTableMotor/softPosition', 'degree', rep=n)
         table_angle_target = data_as(das, 'detectorTableMotor/desiredSoftPosition', 'degree', rep=n)
-        #bank_angle = das['detectorTable/rowAngleOffset'].value
-        bank_angle = np.arange(30)*0.1
-        self.detector.angle_x = table_angle[:, None] + bank_angle[None, :]
-        self.detector.angle_x = table_angle_target[:, None] + bank_angle[None, :]
+        bank_angle = data_as(das, 'detectorTable/rowAngularOffsets', '')[0]
+        #bank_angle = np.arange(30)*0.1
+        self.detector.angle_x = table_angle[:, None, None] + bank_angle[None, :, None]
+        self.detector.angle_x_target = table_angle_target[:, None, None] + bank_angle[None, :, None]
 
-from .nexusref import demo
 if __name__ == "__main__":
+    from .nexusref import demo
     demo(loader=load_entries)

@@ -86,7 +86,7 @@ from io import BytesIO
 import numpy as np
 from numpy import inf, arctan2, sqrt, sin, cos, pi, radians
 
-from . import resolution
+from .resolution import calc_Qx, calc_Qz, dTdL2dQ
 
 IS_PY3 = sys.version_info[0] >= 3
 
@@ -313,6 +313,22 @@ class Beamstop(Group):
     offset = (0., 0.) # mm
     ispresent = False
 
+@set_fields
+class Monochromator(Group):
+    """
+    Monochromator properties.
+
+    wavelength (k nanometre)
+        Wavelength for each channel
+    wavelength_resolution (k %)
+        Wavelength resolution of the beam for each channel using 1-sigma
+        gaussian approximation dL, expressed as 100*dL/L.  The actual
+        wavelength distribution is considerably more complicated, being
+        approximately square for multi-sheet monochromators and highly
+        skewed on TOF machines.
+    """
+    wavelength = 1. # angstrom
+    wavelength_resolution = 0. # angstrom
 
 @set_fields
 class Detector(Group):
@@ -664,6 +680,7 @@ class ReflData(Group):
     """
     _groups = (
         ("slit1", Slit), ("slit2", Slit), ("slit3", Slit), ("slit4", Slit),
+        ("monochromator", Monochromator),
         ("detector", Detector),
         ("sample", Sample),
         ("monitor", Monitor),
@@ -680,7 +697,9 @@ class ReflData(Group):
     slit3 = None      # type: Slit
     #: Post sample slits
     slit4 = None      # type: Slit
-    #: Detector geometry, efficiency and counts
+    #: Monochromator wavelength
+    monochromator = None   # type: Monochromator
+    #: Detector geometry, efficiency, wavelength and counts
     detector = None   # type: Detector
     #: Counts and/or durations
     monitor = None    # type: Monitor
@@ -843,26 +862,43 @@ class ReflData(Group):
 
     @property
     def Qz(self):
-        A, B, L = self.sample.angle_x, self.detector.angle_x, self.detector.wavelength
-        if self.Qz_basis == 'actual':
-            retval = 2*pi/L * (sin(radians(B - A)) + sin(radians(A)))
+        if self.Qz_basis == 'target':
+            Ti, Td = self.sample.angle_x_target, self.detector.angle_x_target
+            Li, Ld = self.monochromator.wavelength, self.detector.wavelength
+            return calc_Qx(Ti, Td, Li, Ld)
+        elif self.Qz_basis == 'actual':
+            Ti, Td = self.sample.angle_x, self.detector.angle_x
+            Li, Ld = self.monochromator.wavelength, self.detector.wavelength
+            return calc_Qz(Ti, Td, Li, Ld)
         elif self.Qz_basis == 'detector':
-            retval = 4*pi/L * (sin(radians(B)/2.0))
+            Ti, Td = self.sample.angle_x, self.detector.angle_x
+            Li, Ld = self.monochromator.wavelength, self.detector.wavelength
+            return calc_Qz(Td/2, Td, Li, Ld)
         elif self.Qz_basis == 'sample':
-            retval = 4*pi/L * (sin(radians(A)))
-        elif self.Qz_basis == 'target':
-            retval = self.Qz_target
+            Ti, Td = self.sample.angle_x, self.detector.angle_x
+            Li, Ld = self.monochromator.wavelength, self.detector.wavelength
+            return calc_Qz(Ti, 2*Ti, Li, Ld)
         else:
             raise KeyError("Qz basis must be one of [actual, detector, sample, target]")
-        return retval
 
     @property
     def Qx(self):
-        A, B, L = self.sample.angle_x, self.detector.angle_x, self.detector.wavelength
-        if self.Qz_basis == 'actual':
-            return 2*pi/L * (cos(radians(B - A)) - cos(radians(A)))
+        if self.Qz_basis == 'target':
+            Ti, Td = self.sample.angle_x_target, self.detector.angle_x_target
+            Li, Ld = self.monochromator.wavelength, self.detector.wavelength
+            return calc_Qx(Ti, Td, Li, Ld)
+        elif self.Qz_basis == 'actual':
+            Ti, Td = self.sample.angle_x, self.detector.angle_x
+            Li, Ld = self.monochromator.wavelength, self.detector.wavelength
+            return calc_Qx(Ti, Td, Li, Ld)
+        elif self.Qz_basis == 'detector':
+            Ti, Td = self.sample.angle_x, self.detector.angle_x
+            return np.zeros_like(Td)
+        elif self.Qz_basis == 'sample':
+            Ti, Td = self.sample.angle_x, self.detector.angle_x
+            return np.zeros_like(Ti)
         else:
-            return np.zeros_like(A)
+            raise KeyError("Qz basis must be one of [actual, detector, sample, target]")
 
     @property
     def dQ(self):
@@ -870,7 +906,7 @@ class ReflData(Group):
             raise ValueError("Need to estimate divergence before requesting dQ")
         T, dT = self.sample.angle_x, self.angular_resolution+self.sample.broadening
         L, dL = self.detector.wavelength, self.detector.wavelength_resolution
-        return resolution.dTdL2dQ(T, dT, L, dL)
+        return dTdL2dQ(T, dT, L, dL)
 
     @property
     def columns(self):
