@@ -15,14 +15,14 @@ webreduce.editor = webreduce.editor || {};
 
   webreduce.editor._cache = new PouchDB("calculations", {size: 100});
   webreduce.editor.clear_cache = function() {
-    $.blockUI({message: "clearing cache", fadeIn: 100, fadeOut: 100});
+    webreduce.blockUI("clearing cache...", 1000);
     new PouchDB('calculations').destroy().then(function () {
       // database destroyed      
       webreduce.editor._cache = new PouchDB("calculations");
-      $.unblockUI();
+      webreduce.unblockUI(1000);
     }).catch(function (err) {
       // error occurred
-      $.unblockUI();
+      webreduce.unblockUI(1000);
       alert(err + "could not destroy cache");
     });
   }
@@ -108,8 +108,10 @@ webreduce.editor = webreduce.editor || {};
   }
   
   function module_clicked_multiple() {
-    webreduce.layout.close("east");
-    var config_target = d3.select(".ui-layout-pane-east");
+    var editor = d3.select("#" + webreduce.editor._target_id);
+    var active_template = webreduce.editor._active_template;
+    //webreduce.layout.close("east");
+    var config_target = d3.select(".ui-layout-east");
     config_target.selectAll("div").remove();
     var to_compare = [];
     editor.selectAll("g.module").each(function(dd, ii) {
@@ -123,15 +125,19 @@ webreduce.editor = webreduce.editor || {};
 
   function module_clicked_single() {
     var active_template = webreduce.editor._active_template;
+    var editor = d3.select("#" + webreduce.editor._target_id);
+    var selected_terminal = editor.select("g.module g.selected rect.terminal");
+    let data_to_show = (selected_terminal.empty()) ? null : selected_terminal.attr("terminal_id");
+    webreduce.editor._active_terminal = data_to_show;
     let i = webreduce.editor._active_node;
     let active_module = active_template.modules[i];
     let module_def = webreduce.editor._module_defs[active_module.module];
     let fields = module_def.fields || [];
-    let data_to_show = webreduce.editor._active_terminal;
     var add_interactors = (data_to_show == (module_def.inputs[0] || {}).id);
 
-    webreduce.layout.open("east");
-    var config_target = d3.select(".ui-layout-pane-east");
+    // TODO: fix for split layout
+    //webreduce.layout.open("east");
+    var config_target = d3.select(".ui-layout-east");
     config_target.selectAll("div").remove();
     var header = config_target
       .append("div")
@@ -163,12 +169,20 @@ webreduce.editor = webreduce.editor || {};
       .classed("accept config", true)
       .on("click", function() {
         webreduce.editor.accept_parameters(config_target, active_module);
-        if (!(d3.select(clicked_elem).classed("output"))) {
-          // find the first output and select that one...
-          var first_output = module_def.outputs[0].id;
-          clicked_elem = d3.select(elem).select('rect.terminal[terminal_id="'+first_output+'"]').node();          
+        if (selected_terminal.empty()) {
+          // then it's a loader that's clicked, with no output selected;
+          let first_output = module_def.outputs[0].id;
+          let selected_title = editor.select("g.module g.title.selected");
+          let module_elem = d3.select(selected_title.node().parentNode);
+          module_elem.selectAll("g.terminals").classed('selected', function(d) { return d.id == first_output });
         }
-        webreduce.editor.handle_module_clicked.call(elem,null,i,null,clicked_elem);
+        else if (!(selected_terminal.classed("output"))) {
+          // find the first output and select that one...
+          let first_output = module_def.outputs[0].id;
+          let module_elem = d3.select(selected_terminal.node().parentNode.parentNode);
+          module_elem.selectAll("g.terminals").classed('selected', function(d) { return d.id == first_output });
+        }
+        module_clicked_single();
       })
     buttons_div.append("button")
       .text("clear")
@@ -177,7 +191,7 @@ webreduce.editor = webreduce.editor || {};
         var we = webreduce.editor;
         //console.log('clear: ', config_target, JSON.stringify(active_module, null, 2));
         if (active_module.config) { delete active_module.config }
-        module_clicked();
+        module_clicked_single();
       })
       
     $(buttons_div.node()).buttonset();
@@ -260,7 +274,7 @@ webreduce.editor = webreduce.editor || {};
 
   function module_clicked() {
     var editor = d3.select("#" + webreduce.editor._target_id);
-    if (editor.selectAll("g.terminal.selected rect.terminal").size() > 1) {
+    if (editor.selectAll("g.module g.selected rect.terminal").size() > 1) {
       module_clicked_multiple();
     }
     else {
@@ -296,7 +310,7 @@ webreduce.editor = webreduce.editor || {};
       var parent = d3.select(clicked_elem.parentNode);
       parent.classed("selected", !(parent.classed("selected")));
       editor.selectAll("g.module, g.module g.title").classed("selected", false);
-      module_clicked();   
+      module_clicked_multiple();
     }
 
     else {
@@ -309,7 +323,7 @@ webreduce.editor = webreduce.editor || {};
       var fields = module_def.fields || [];
       if (fields.filter(function(d) {return d.datatype == 'fileinfo'}).length == 0) {
           var nav = $("#datasources");
-          nav.block({message: null, fadeIn:0, overlayCSS: {opacity: 0.25, cursor: 'not-allowed', height: nav.prop("scrollHeight")}});
+          nav.find("div.block-overlay").show();
       }
       
       if (d3.select(clicked_elem).classed("title")) {
@@ -382,7 +396,7 @@ webreduce.editor = webreduce.editor || {};
       active_plot = null;
       d3.select("#plotdiv").selectAll("svg, div").remove();
       d3.select("#plotdiv").append("div")
-        .style("position", "absolute")
+        //.style("position", "absolute")
         .style("top", "0px")
         .style("text-align", "center")
         .append("h1").html("&#8709;")
@@ -1172,20 +1186,18 @@ webreduce.editor = webreduce.editor || {};
     // call result_callback on each result individually (this function will return all results
     // if you want to act on the aggregate after)
     var caching = $("#cache_calculations").prop("checked");
-    if (webreduce.editor._calc_status_message == null) {
-      var status_message = $("<div />");
-      status_message.append($("<h1 />", {text: "Processing..."}));
-      status_message.append($("<progress />"));
-      status_message.append($("<span />"));
-      status_message.append($("<button />", {text: "cancel", class: "cancel"}));
-      webreduce.editor._calc_status_message = status_message;
-    }
+    var status_message = $("<div />");
+    status_message.append($("<h1 />", {text: "Processing..."}));
+    status_message.append($("<progress />"));
+    status_message.append($("<span />"));
+    status_message.append($("<button />", {text: "cancel", class: "cancel"}));
+    
     webreduce.editor._calculation_cancelled = false;
     var calculation_finished = false;
-    var status_message = webreduce.editor._calc_status_message;
+    //var status_message = webreduce.editor._calc_status_message;
     var r = new Promise(function(resolve, reject) {resolve()});
-    var cancel_promise = new Promise(function(resolve, reject) { 
-      status_message.find("button").on("click", function() {
+    var cancel_promise = new Promise(function(resolve, reject) {
+      status_message.find("button").off("click").on("click", function() {
         webreduce.editor._calculation_cancelled = true;
         calculation_finished = true;
         resolve({"cancelled": true})
@@ -1195,7 +1207,7 @@ webreduce.editor = webreduce.editor || {};
     if (!noblock) {
       r = r.then(function() { 
         window.setTimeout(function() {
-          if (!calculation_finished) {$.blockUI({message: status_message, fadeIn: 100, fadeOut: 100})}
+          if (!calculation_finished) {webreduce.blockUI(status_message)}
           }, 200)
       })
     }
@@ -1227,8 +1239,8 @@ webreduce.editor = webreduce.editor || {};
       r = r.then(function() {return Promise.race([cancel_promise, calculate_one(params, caching)])})
     }
     if (!noblock) {
-      r = r.then(function(result) { calculation_finished = true; $.unblockUI(); return result; })
-       .catch(function(err) { calculation_finished = true; $.unblockUI(); throw err });
+      r = r.then(function(result) { calculation_finished = true; webreduce.unblockUI(); return result; })
+       .catch(function(err) { calculation_finished = true; webreduce.unblockUI(); throw err });
     }
     return r;
   }
@@ -1434,6 +1446,7 @@ webreduce.editor = webreduce.editor || {};
         })
       });
       webreduce.instruments[instrument_id].categories = unpacked;
+      $("button#refresh_all").trigger("click");
     })
     d3_handle.select("button.close").on("click", function() { dialog.dialog("close"); });
     d3_handle.select("button.load-defaults").on("click", function() { 

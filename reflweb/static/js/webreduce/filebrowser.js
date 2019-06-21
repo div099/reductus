@@ -40,9 +40,17 @@
         "mtime": files_metadata[j].mtime
       }
     });
-
-    let results = await loader(load_params, file_objs, false, 'metadata');
     
+    let loader_template = loader(load_params, file_objs, false, 'metadata');
+    let results = await webreduce.editor.calculate(loader_template, false, false);
+    results.forEach(function(result, i) {
+      var lp = load_params[i];
+      if (result && result.values) {
+        result.values.forEach(function(v) {v.mtime = lp.mtime});
+        file_objs[lp.path] = result;
+      }
+    });
+
     webreduce.editor._datafiles = results;
     var categories = instrument.categories;
     var treeinfo = file_objs_to_tree(file_objs, categories, datasource);
@@ -278,7 +286,8 @@
     if (pathlist.length > 0) {
       var new_pathlist = $.extend(true, [], pathlist);
       $.each(new_pathlist, function(index, pathitem) {
-        dirlink = document.createElement('span');
+        dirlink = document.createElement('div');
+        dirlink.classList.add("pathitem")
         dirlink.textContent = pathitem + "/";
         dirlink.onclick = function() {
           webreduce.server_api.get_file_metadata({source: datasource, pathlist: new_pathlist.slice(0, index+1)})
@@ -327,16 +336,10 @@
     return categorizeFiles(metadata, datasource, pathlist.join("/"), target);
   }
 
-  function handleChecked(d, i, stopPropagation) {
+  async function handleChecked(d, i, stopPropagation) {
     var instrument_id = webreduce.editor._instrument_id;
     var loader = webreduce.instruments[instrument_id].load_file;
-    var xlabel, ylabel,
-        datas = [],
-        options={series: [], axes: {xaxis: {label: "x-axis"}, yaxis: {label: "y-axis"}}},
-        fileinfo = [],
-        datatype = null,
-        entries = []
-    var loaded_promise = Promise.resolve();
+    var fileinfo = [];
     $(".remote-filebrowser").each(function() {
       var jstree = $(this).jstree(true);
       if (jstree) {
@@ -356,16 +359,16 @@
     if (!stopPropagation) {
       $("div.fields").trigger("fileinfo.update", [fileinfo]);
     }
-    loader(fileinfo, null, false, 'plottable').then(function(results) {
-      var entries = results.map(function(r,i) {
+    let loader_template = loader(fileinfo, null, false, 'plottable');
+    let results = await webreduce.editor.calculate(loader_template, false, false);
+    let entries = results.map(function(r,i) {
         var values = r.values || [];
         var fi = fileinfo[i];
         var entry = values.find(function(e) { return e.entry == fi.entries[0] });
         return entry;
       });
-      var result = {"values": entries}
-      webreduce.editor._active_plot = webreduce.editor.show_plots([result]);
-    });
+    let result = {"values": entries}
+    webreduce.editor._active_plot = webreduce.editor.show_plots([result]);
   }
 
   function sortAlphaNumeric(a,b) {

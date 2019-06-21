@@ -16,7 +16,8 @@ import numpy as np
 from dataflow.lib.uncertainty import Uncertainty
 from dataflow.lib import uncertainty
 
-from .sansdata import SansData, Sans1dData, Parameters
+from .sansdata import SansData, Sans1dData, Parameters, _s
+from .sans_vaxformat import readNCNRSensitivity
 
 ALL_ACTIONS = []
 IGNORE_CORNER_PIXELS = True
@@ -74,6 +75,49 @@ def url_load(fileinfo):
 
 @cache
 @module
+def LoadDIV(filelist=None, variance=0.0001):
+    """
+    loads a DIV file (VAX format) into a SansData obj and returns that.
+
+    **Inputs**
+
+    filelist (fileinfo[]): Files to open.
+
+    variance (float): Target variance of DIV measurement (default 0.0001, i.e. 1% error)
+    
+    **Returns**
+
+    output (sans2d[]): all the entries loaded.
+
+    2018-04-21 Brian Maranville
+    """
+    from dataflow.fetch import url_get
+    from .sans_vaxformat import readNCNRSensitivity
+
+    output = []
+    if filelist is not None:
+        for fileinfo in filelist:
+            path, mtime, entries = fileinfo['path'], fileinfo.get('mtime', None), fileinfo.get('entries', None)
+            name = basename(path)
+            fid = BytesIO(url_get(fileinfo, mtime_check=False))
+            sens_raw = readNCNRSensitivity(fid)
+            sens = SansData(Uncertainty(sens_raw, sens_raw * variance))
+            sens.metadata = {
+                "analysis.groupid": -1,
+                "analysis.intent": "DIV",
+                "analysis.filepurpose": "Sensitivity",
+                "run.experimentScanID": name, 
+                "sample.description": "PLEX",
+                "entry": "entry",
+                "run.filename": name,
+                "sample.labl": "PLEX",
+                "run.configuration": "DIV"
+            }
+            output.append(sens)
+    return output
+
+@cache
+@module
 def LoadSANS(filelist=None, flip=False, transpose=False, check_timestamps=True):
     """
     loads a data file into a SansData obj and returns that.
@@ -93,7 +137,7 @@ def LoadSANS(filelist=None, flip=False, transpose=False, check_timestamps=True):
 
     output (sans2d[]): all the entries loaded.
 
-    2018-04-20 Brian Maranville
+    2018-04-21 Brian Maranville
     """
     from dataflow.fetch import url_get
     from .loader import readSANSNexuz
@@ -104,7 +148,25 @@ def LoadSANS(filelist=None, flip=False, transpose=False, check_timestamps=True):
         path, mtime, entries = fileinfo['path'], fileinfo.get('mtime', None), fileinfo.get('entries', None)
         name = basename(path)
         fid = BytesIO(url_get(fileinfo, mtime_check=check_timestamps))
-        entries = readSANSNexuz(name, fid)
+        if name.upper().endswith(".DIV"):
+            sens_raw = readNCNRSensitivity(fid)
+            print(sens_raw)
+            sens = SansData(Uncertainty(sens_raw, sens_raw * 0.0001))
+            print(sens, sens.metadata)
+            sens.metadata = {
+                "analysis.groupid": -1,
+                "analysis.intent": "DIV",
+                "analysis.filepurpose": "Sensitivity",
+                "run.experimentScanID": name, 
+                "sample.description": "PLEX",
+                "entry": "entry",
+                "run.filename": name,
+                "sample.labl": "PLEX",
+                "run.configuration": "DIV"
+            }
+            entries = [sens]
+        else:
+            entries = readSANSNexuz(name, fid)
         for entry in entries:
             if flip:
                 entry.data.x = np.fliplr(entry.data.x)
@@ -795,7 +857,7 @@ def correct_attenuation(sample, instrument="NG7"):
 
 @cache
 @module
-def absolute_scaling(sample, empty, div, Tsam, instrument="NG7", integration_box=[55, 74, 53, 72]):
+def absolute_scaling(sample, empty, Tsam, div, instrument="NG7", integration_box=[55, 74, 53, 72]):
     """
     Calculate absolute scaling
 
@@ -807,9 +869,9 @@ def absolute_scaling(sample, empty, div, Tsam, instrument="NG7", integration_box
 
     empty (sans2d): measurement with no sample in the beam
 
-    div (sans2d): DIV measurement
-
     Tsam (params): sample transmission
+
+    div (sans2d): DIV measurement
 
     instrument (opt:NG7|NGB|NGB30): instrument name, should be NG7 or NG3
 
@@ -1090,7 +1152,85 @@ def sliceData(data, slicebox=[None,None,None,None]):
                         
     return x_output, y_output
 
+@nocache
+@module
+def transmissionDecay(data, slicebox=[None,None,None,None], autosort=True):
+    """
+    Sum 2d data along in the box and return intensity vs time
 
+    **Inputs**
+
+    data (sans2d[]) : data in
+    
+    slicebox (range?:xy): region over which to integrate (in data coordinates)
+
+    autosort (bool): sort results by time
+
+    **Returns**
+
+    sum (sans1d) : integrated counts vs. middle of count time (average of start and end times)
+
+    2018-04-24 Brian Maranville
+    """
+    import datetime, iso8601
+    if slicebox is None:
+        slicebox = [None, None, None, None]
+    xmin, xmax, ymin, ymax = slicebox
+    
+    times = []
+    sums = []
+    sums_variance = []
+    for dataset in data:
+        box_sum = sumBox(dataset, xmin, xmax, ymin, ymax)
+        sums.append(box_sum.x)
+        sums_variance.append(box_sum.variance)
+        start_time = iso8601.parse_date(_s(dataset.metadata['start_time']))
+        end_time = iso8601.parse_date(_s(dataset.metadata['end_time']))
+        avg_time = (end_time - start_time)/2.0 + start_time
+        times.append(avg_time.timestamp())
+    
+    xdata = np.array(times)
+    dxdata = np.zeros_like(xdata)
+
+    ydata = np.array(sums)
+    dydata = np.array(sums_variance)
+    if autosort:
+        sorting_indices = np.argsort(xdata)
+        xdata = xdata[sorting_indices]
+        dxdata = dxdata[sorting_indices]
+        ydata = ydata[sorting_indices]
+        dydata = dydata[sorting_indices]
+
+
+    output = Sans1dData(xdata, ydata, dx=dxdata, dv=dydata, xlabel='time', vlabel="I",
+                    xunits="s", vunits="neutrons", xscale="time", metadata=data[0].metadata)
+    
+    return output
+    
+
+def sumBox(data, xmin, xmax, ymin, ymax):
+    res = data.copy()
+    if data.qx is None or data.qy is None:
+        # then use pixels
+        xslice = slice(int(np.ceil(xmin)) if xmin is not None else None, int(np.floor(xmax)) if xmax is not None else None)
+        yslice = slice(int(np.ceil(ymin)) if ymin is not None else None, int(np.floor(ymax)) if ymax is not None else None)
+        
+    else:
+        # then use q-values
+        qxmin = data.qx_min if data.qx_min is not None else data.qx.min()
+        qxmax = data.qx_max if data.qx_max is not None else data.qx.max()
+        qx_in = np.linspace(qxmin, qxmax, data.data.x.shape[0])
+        qymin = data.qy_min if data.qy_min is not None else data.qy.min()
+        qymax = data.qy_max if data.qy_max is not None else data.qy.max()
+        qy_in = np.linspace(qymin, qymax, data.data.x.shape[1])
+        
+        xslice = slice(get_index(qx_in, xmin), get_index(qx_in, xmax))
+        yslice = slice(get_index(qy_in, ymin), get_index(qy_in, ymax))
+        
+    dataslice = (xslice, yslice)
+    box_sum = uncertainty.sum(data.data[dataslice])
+    return box_sum
+    
 @cache
 @module
 def SuperLoadSANS(filelist=None, do_det_eff=True, do_deadtime=True,

@@ -28,24 +28,16 @@ webreduce.instruments['ncnr.sans'] = webreduce.instruments['ncnr.sans'] || {};
         return_type: return_type
       }
     });
-    return webreduce.editor.calculate(calc_params, false, noblock).then(function(results) {
-      results.forEach(function(result, i) {
-        var lp = load_params[i];
-        if (result && result.values) {
-          result.values.forEach(function(v) {v.mtime = lp.mtime});
-          if (db) { db[lp.path] = result; }
-        }
-      });
-      return results;
-    })
+    return calc_params;
   }
   
   var NEXUZ_REGEXP = /\.nxz\.[^\.\/]+$/
   var NEXUS_REGEXP = /\.nxs\.[^\.\/]+(\.zip)?$/
+  var DIV_REGEXP = /\.DIV$/
 
   instrument.files_filter = function(x) {
     return (
-      ((NEXUZ_REGEXP.test(x) || NEXUS_REGEXP) &&
+      ((NEXUS_REGEXP.test(x) || DIV_REGEXP.test(x)) &&
          (/^(fp_)/.test(x) == false) &&
          (/^rapidscan/.test(x) == false) &&
          (/^scripted_findpeak/.test(x) == false))
@@ -55,9 +47,17 @@ webreduce.instruments['ncnr.sans'] = webreduce.instruments['ncnr.sans'] || {};
   instrument.load_file = load_sans;
   instrument.default_categories = [
     [["analysis.groupid"]],
-    [["analysis.intent"]], 
-    [["run.configuration"]], 
-    [["run.experimentScanID"],["sample.description"]]
+    [
+      [
+        "analysis.intent"
+      ],
+      [
+        "run.experimentScanID"
+      ],
+      [
+        "sample.description"
+      ]
+    ]
   ];
   instrument.categories = jQuery.extend(true, [], instrument.default_categories);  
   
@@ -135,7 +135,7 @@ webreduce.instruments['ncnr.sans'] = webreduce.instruments['ncnr.sans'] || {};
       var pathsegments = fullpath.split("/");
       var pathlist = pathsegments.slice(0, pathsegments.length-1).join("+");
       var filename = pathsegments.slice(-1);
-      var link = "<a href=\"http://ncnr.nist.gov/ipeek/nexus-zip-viewer.html";
+      var link = "<a href=\"https://ncnr.nist.gov/ncnrdata/view/nexus-hdf-viewer.html";
       link += "?pathlist=" + pathlist;
       link += "&filename=" + filename;
       link += "\" style=\"text-decoration:none;\">&#9432;</a>";

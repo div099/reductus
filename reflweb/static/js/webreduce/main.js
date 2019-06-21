@@ -36,6 +36,22 @@ webreduce.instruments = webreduce.instruments || {};
   webreduce.callbacks = {};
   webreduce.callbacks.resize_center = function() {};
   
+  webreduce.blockUI = function(message, duration) {
+    var duration = duration || 0;
+    if (message != null) {
+      $("div#fullscreen_modal .overlay-message").html(message).show();
+    }
+    else {
+      $("div#fullscreen_modal .overlay-message").hide();
+    }
+    $("div#fullscreen_modal").fadeIn(duration);
+  }
+
+  webreduce.unblockUI = function(duration) {
+    var duration = duration || 0;
+    $("div#fullscreen_modal").fadeOut(duration);
+  }
+
   window.onbeforeunload = function (e) {
     var e = e || window.event;
     var msg = "Do you really want to leave this page?"
@@ -91,25 +107,33 @@ webreduce.instruments = webreduce.instruments || {};
     zip.workerScriptsPath = "js/";
     zip.useWebWorkers = true;
     webreduce.server_api.__init__().then(function(api) {
-      var layout = $('body').layout({
-           west__size:          350
-        ,  east__size:          300
-        ,  south__size:         200
-          // RESIZE Accordion widget when panes resize
-        ,  west__onresize:	    $.layout.callbacks.resizePaneAccordions
-        ,  east__onresize:	    $.layout.callbacks.resizePaneAccordions
-        ,  south__onresize:     $.layout.callbacks.resizePaneAccordions
-        ,  center__onresize:    function() {webreduce.callbacks.resize_center()}
+      var middle_layout = Split(['.ui-layout-west', '.ui-layout-center', '.ui-layout-east'], {
+        sizes: [25,50,25],
+        elementStyle: (dimension, size, gutterSize) => ({
+          'flex-basis': `calc(${size}% - ${gutterSize}px)`,
+        }),
+        gutterStyle: (dimension, gutterSize) => ({
+            'flex-basis':  `${gutterSize}px`,
+        }),
+        minSize: 0
       });
-
-      layout.toggle('east');
-      layout.allowOverflow('north');
-      //$("#menu").menu({width: '200px;', position: {my: "left top", at: "left+15 bottom"}});
+      
       $(".ui-layout-west")
 				.tabs()
 
-	  
-      webreduce.layout = layout;
+      
+      var layout = Split(["#middle_content", "#bottom_panel"], {
+        sizes: [95, 5],
+        elementStyle: (dimension, size, gutterSize) => ({
+          'flex-basis': `calc(${size}% - ${gutterSize}px)`,
+        }),
+        gutterStyle: (dimension, gutterSize) => ({
+            'flex-basis':  `${gutterSize}px`,
+        }),
+        direction: 'vertical'
+      })
+
+      webreduce.layout = middle_layout;
       webreduce.download = (function () {
         var a = document.createElement("a");
         document.body.appendChild(a);
