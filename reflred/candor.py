@@ -4,6 +4,7 @@ import numpy as np
 from .refldata import ReflData
 from . import nexusref
 from .nexusref import data_as, fetch_str
+from .resolution import FWHM2sigma
 
 def load_metadata(filename, file_obj=None):
     """
@@ -16,6 +17,8 @@ def load_entries(filename, file_obj=None, entries=None):
     return nexusref.load_nexus_entries(filename, file_obj=file_obj,
                                        meta_only=False, entry_loader=Candor)
 
+#: Number of detector channels per detector tube on CANDOR
+NUM_CHANNELS = 54
 
 class Candor(ReflData):
     """
@@ -41,14 +44,24 @@ class Candor(ReflData):
         self.slit4.distance = data_as(entry, 'instrument/detector_mask/distance', 'mm')
         self.monochromator.wavelength = data_as(entry, 'instrument/monochromator/wavelength', 'Ang', rep=n)
         self.monochromator.wavelength_resolution = data_as(entry, 'instrument/monochromator/wavelength_error','Ang', rep=n)
-        L = data_as(das, 'detectorTable/wavelengths', 'Ang')
-        dLoL = data_as(das, 'detectorTable/wavelengthSpreads', '')
-        L = L.reshape(1, -1, 54)
-        dLoL = dLoL.reshape(1, -1, 54)
-        self.detector.wavelength = L
-        self.detector.wavelength_resolution = L * dLoL
+        divergence = data_as(das, 'detectorTable/angularSpreads', '')
+        wavelength = data_as(das, 'detectorTable/wavelengths', '')
+        wavelength_spread = data_as(das, 'detectorTable/wavelengthSpreads', '')
+        efficiency = data_as(das, 'detectorTable/detectorEfficiencies', '')
+        if np.isnan(efficiency):
+            # Missing detector efficiency info
+            efficiency = np.ones_like(divergence)
+        divergence = divergence.reshape(NUM_CHANNELS, -1).T[None, :, :]
+        wavelength = wavelength.reshape(NUM_CHANNELS, -1).T[None, :, :]
+        wavelength_spread = wavelength_spread.reshape(NUM_CHANNELS, -1).T[None, :, :]
+        efficiency = efficiency.reshape(NUM_CHANNELS, -1).T[None, :, :]
+        self.detector.wavelength = wavelength
+        self.detector.wavelength_resolution = FWHM2sigma(wavelength * wavelength_spread)
+        self.detector.efficiency = efficiency
+        # TODO: not using angular divergence?
 
         if np.isnan(self.monochromator.wavelength):
+            # If not monochromatic beam then assume elastic scattering
             self.monochromator.wavelength = self.detector.wavelength
             self.monochromator.wavelength_resolution = self.detector.wavelength_resolution
 

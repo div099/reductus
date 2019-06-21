@@ -736,6 +736,8 @@ class ReflData(Group):
     date = datetime.datetime(1970, 1, 1)
     #: Duration of the measurement.
     duration = 0
+    #: Nominal attenuation as recorded in the data file, or 1.0 if not recorded
+    attenuation = 1.0
     #: '' unpolarized
     #: '+' spin up
     #: '-' spin down
@@ -1033,14 +1035,43 @@ class ReflData(Group):
         from matplotlib import pyplot as plt
         if label is None:
             label = self.name+self.polarization
+        if len(self.v.shape) == 3:
+            self._plot_candor(label)
+        elif len(self.v.shape) == 2:
+            self._plot_2d(label)
+        else:
+            self._plot_1d(label)
+
+    def _plot_1d(self, label):
+        from matplotlib import pyplot as plt
         xerr = self.dx if self.angular_resolution is not None else None
-        x, dx, xunits, xlabel = self.x, xerr, self.xunits, self.xlabel
+        x, xunits, xlabel = self.x, self.xunits, self.xlabel
         #x, dx, xunits, xlabel = self.detector.angle_x, self.angular_resolution, 'detector angle', 'deg'
         plt.errorbar(x, self.v, yerr=self.dv, xerr=xerr, label=label, fmt='.')
         plt.xlabel("%s (%s)"%(xlabel, xunits) if xunits else xlabel)
         plt.ylabel("%s (%s)"%(self.vlabel, self.vunits) if self.vunits else self.vlabel)
         if not Intent.isslit(self.intent):
             plt.yscale('log')
+
+    def _plot_candor(self, label):
+        from matplotlib import pyplot as plt
+        xerr = self.dx if self.angular_resolution is not None else None
+        #x, dx, xunits, xlabel = self.x, xerr, self.xunits, self.xlabel
+        x, xunits, xlabel = self.detector.wavelength, 'Ang', 'detector wavelength'
+        y, yunits, ylabel = self.sample.angle_x, 'degree', 'sample angle'
+        v = self.v
+        plt.subplot(211)
+        plt.pcolormesh(edges(x[0, 0, :]), edges(y[:, 0, 0]), v[:, 0, :])
+        plt.xlabel("%s (%s)"%(xlabel, xunits))
+        plt.ylabel("%s (%s)"%(ylabel, yunits))
+        plt.colorbar()
+        plt.text(0, 0, ["bank 0"], ha='right', va='bottom', zorder=5)
+        plt.subplot(212)
+        plt.pcolormesh(edges(x[0, 1, :]), edges(y[:, 0, 0]), v[:, 1, :])
+        plt.xlabel("%s (%s)"%(xlabel, xunits))
+        plt.ylabel("%s (%s)"%(ylabel, yunits))
+        plt.colorbar()
+        plt.text(0, 0, ["bank 1"], ha='left', va='top', zorder=5)
 
     def save(self, filename):
         with open(filename, 'w') as fid:
@@ -1134,6 +1165,12 @@ class ReflData(Group):
 
     def get_metadata(self):
         return self.todict()
+
+def edges(c):
+    midpoints = (c[:-1]+c[1:])/2
+    left = 2*c[0] - midpoints[0]
+    right = 2*c[-1] - midpoints[-1]
+    return np.hstack((left, midpoints, right))
 
 def get_item(obj, path):
     result = obj
