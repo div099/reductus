@@ -1037,12 +1037,14 @@ class ReflData(Group):
         from matplotlib import pyplot as plt
         if label is None:
             label = self.name+self.polarization
-        if len(self.v.shape) == 3:
+        if self.v.ndim == 3:
             self._plot_candor(label)
-        elif len(self.v.shape) == 2:
+        elif self.v.ndim == 2:
             self._plot_2d(label)
-        else:
+        elif self.v.ndim == 1:
             self._plot_1d(label)
+        else:
+            raise TypeError("Cannot plot data of shape "+str(self.v.shape))
 
     def _plot_1d(self, label):
         from matplotlib import pyplot as plt

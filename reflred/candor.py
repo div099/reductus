@@ -14,6 +14,7 @@ def load_metadata(filename, file_obj=None):
                         meta_only=True, entry_loader=Candor)
 
 def load_entries(filename, file_obj=None, entries=None):
+    #print("loading", filename, file_obj)
     return nexusref.load_nexus_entries(filename, file_obj=file_obj,
                                        meta_only=False, entry_loader=Candor)
 
@@ -45,16 +46,21 @@ class Candor(ReflData):
         self.monochromator.wavelength = data_as(entry, 'instrument/monochromator/wavelength', 'Ang', rep=n)
         self.monochromator.wavelength_resolution = data_as(entry, 'instrument/monochromator/wavelength_error','Ang', rep=n)
         divergence = data_as(das, 'detectorTable/angularSpreads', '')
+        efficiency = data_as(das, 'detectorTable/detectorEfficiencies', '')
         wavelength = data_as(das, 'detectorTable/wavelengths', '')
         wavelength_spread = data_as(das, 'detectorTable/wavelengthSpreads', '')
-        efficiency = data_as(das, 'detectorTable/detectorEfficiencies', '')
-        if np.isnan(efficiency):
-            # Missing detector efficiency info
-            efficiency = np.ones_like(divergence)
+        if np.isscalar(divergence):
+            if np.isnan(divergence):
+                divergence = 0.01  # default divergence if missing
+            divergence = np.ones(wavelength.shape) * divergence
+        if np.isscalar(efficiency):
+            if np.isnan(efficiency):
+                efficiency = 1.0  # default efficiency if missing
+            efficiency = np.ones(wavelength.shape) * efficiency
         divergence = divergence.reshape(NUM_CHANNELS, -1).T[None, :, :]
+        efficiency = efficiency.reshape(NUM_CHANNELS, -1).T[None, :, :]
         wavelength = wavelength.reshape(NUM_CHANNELS, -1).T[None, :, :]
         wavelength_spread = wavelength_spread.reshape(NUM_CHANNELS, -1).T[None, :, :]
-        efficiency = efficiency.reshape(NUM_CHANNELS, -1).T[None, :, :]
         self.detector.wavelength = wavelength
         self.detector.wavelength_resolution = FWHM2sigma(wavelength * wavelength_spread)
         self.detector.efficiency = efficiency
