@@ -99,7 +99,8 @@ class CacheManager(object):
                 cachedir = self._diskcache_kwargs.pop("cachedir", "cache")
                 print('cacheargs:', self._diskcache_kwargs)
                 self._cache = Cache(cachedir, **self._diskcache_kwargs)
-                self._file_cache = self._cache
+                file_cachedir = self._diskcache_kwargs.pop("file_cachedir", "files_cache")
+                self._file_cache = Cache(file_cachedir, **self._diskcache_kwargs)
                 return
             except Exception as exc:
                 warning = "diskcache connection failed with:\n\t" + str(exc)
@@ -162,6 +163,19 @@ class CacheManager(object):
             self._connect()
         return self._file_cache
 
+    def store_file(self, key, contents):
+        if self._use_compression:
+            import lz4.frame
+            contents = lz4.frame.compress(contents)
+        self._file_cache.set(key, contents)
+
+    def retrieve_file(self, key):
+        contents = self._file_cache.get(key)
+        if self._use_compression:
+            import lz4.frame
+            contents = lz4.frame.decompress(contents)
+        return contents
+
     def store(self, key, value):
         string = pickle.dumps(value, protocol=self._pickle_protocol)
         if self._use_compression:
@@ -180,6 +194,9 @@ class CacheManager(object):
     def delete(self, key):
         self._cache.delete(key)
 
+    def file_exists(self, key):
+        return self._file_cache.exists(key)
+        
     def exists(self, key):
         return self._cache.exists(key)
 
