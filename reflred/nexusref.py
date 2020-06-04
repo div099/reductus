@@ -88,29 +88,32 @@ def load_metadata(filename, file_obj=None):
     Load the summary info for all entries in a NeXus file.
     """
     return load_nexus_entries(filename, file_obj=file_obj,
-                              meta_only=True, entry_loader=NCNRNeXusRefl)
+                              meta_only=True, entry_loader=NCNRNeXusRefl, subentries=False)
 
 
 def load_entries(filename, file_obj=None, entries=None):
     return load_nexus_entries(filename, file_obj=file_obj, entries=entries,
-                              meta_only=False, entry_loader=NCNRNeXusRefl)
+                              meta_only=False, entry_loader=NCNRNeXusRefl, subentries=False)
 
 
 def load_nexus_entries(filename, file_obj=None, entries=None,
-                       meta_only=False, entry_loader=None):
+                       meta_only=False, entry_loader=None, subentries=False):
     """
     Load the summary info for all entries in a NeXus file.
     """
     handle = h5_open.h5_open_zip(filename, file_obj)
     measurements = []
     for name, entry in handle.items():
-        if entries is not None and name not in entries:
-            continue
         if _s(entry.attrs.get('NX_class', None)) == 'NXentry':
-            data = entry_loader(entry, name, filename)
+            datas = entry_loader(entry, name, filename)
+            if not subentries:
+                datas = [datas]
+            if entries is not None:
+                datas = [d for d in datas if d.entry in entries]
             if not meta_only:
-                data.load(entry)
-            measurements.append(data)
+                for data in datas:
+                    data.load(entry)
+            measurements.extend(datas)
     if file_obj is None:
         handle.close()
     return measurements

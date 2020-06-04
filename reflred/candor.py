@@ -16,12 +16,12 @@ def load_metadata(filename, file_obj=None):
     Load the summary info for all entries in a NeXus file.
     """
     return load_nexus_entries(filename, file_obj=file_obj,
-                              meta_only=True, entry_loader=Candor)
+                              meta_only=True, entry_loader=CandorSubEntryLoader, subentries=True)
 
 def load_entries(filename, file_obj=None, entries=None):
     #print("loading", filename, file_obj)
     return load_nexus_entries(filename, file_obj=file_obj, entries=entries,
-                              meta_only=False, entry_loader=Candor)
+                              meta_only=False, entry_loader=CandorSubEntryLoader, subentries=True)
 
 #: Number of detector channels per detector tube on CANDOR
 NUM_CHANNELS = 54
@@ -46,6 +46,17 @@ def detector_efficiency():
         _EFFICIENCY = np.vstack((eff, eff)).T
     return _EFFICIENCY
 
+def CandorSubEntryLoader(entry, entryname, filename):
+    das = entry['DAS_logs']
+    detector = das.get('multiDetector', das.get('areaDetector', None))
+    if detector is None:
+        return []
+    # TODO: put the number of detector banks in the nexus instrument definition.
+    num_banks = detector['dimension'][0]
+    if num_banks == NUM_CHANNELS:
+        num_banks = detector['dimension'][1]
+    return [Candor(entry, entryname, filename, bank=i) for i in range(num_banks)]
+
 class Candor(ReflData):
     """
     Candor data entry.
@@ -54,11 +65,15 @@ class Candor(ReflData):
     """
     format = "NeXus"
     probe = "neutron"
+    detector_bank = None
 
-    def __init__(self, entry, entryname, filename):
+    def __init__(self, entry, entryname, filename, bank=0):
         super().__init__()
         nexus_common(self, entry, entryname, filename)
+        self.entry += "_bank{:d}".format(bank)
         self.geometry = 'vertical'
+        self.detector_bank = bank
+        self._fields += ('detector_bank',)
 
     def load(self, entry):
         #print(entry['instrument'].values())
@@ -94,12 +109,14 @@ class Candor(ReflData):
         if counts is None or counts.size == 0:
             raise ValueError("Candor file '{self.path}' has no area detector data.".format(self=self))
 
+        # TODO: should we put axis labels into nexus file for multidimensional detector data?
         channels_at_end = (counts.shape[2] == NUM_CHANNELS)
         if channels_at_end:
             counts = np.swapaxes(counts, 1, 2)
+        counts = counts[:, :, self.detector_bank]
         self.detector.counts = counts
         self.detector.counts_variance = counts.copy()
-        self.detector.dims = counts.shape[1:]
+        self.detector.dims = counts.shape
 
         # Monochromator
         # Note: could test Q/beamMode == 'SINGLE_BEAM" for is_mono
@@ -196,9 +213,9 @@ class Candor(ReflData):
         if (efficiency == 1.0).all():
             efficiency = detector_efficiency()
 
-        self.detector.wavelength = wavelength[None, :, :]
-        self.detector.wavelength_resolution = wavelength_resolution[None, :, :]
-        self.detector.efficiency = efficiency[None, :, :]
+        self.detector.wavelength = wavelength[None, :, self.detector_bank]
+        self.detector.wavelength_resolution = wavelength_resolution[None, :, self.detector_bank]
+        self.detector.efficiency = efficiency[None, :, self.detector_bank]
         #self.angular_resolution = divergence[None, :, :]
         # TODO: sample broadening?
 
@@ -224,12 +241,11 @@ class Candor(ReflData):
     @property
     def Td(self):
         angle, offset = self.detector.angle_x, self.detector.angle_x_offset
-        return angle[:, None, None] + offset[None, None, :]
-
+        return angle[:, None, None] + offset[None, None, self.detector_bank]
     @property
     def Td_target(self):
         angle, offset = self.detector.angle_x_target, self.detector.angle_x_offset
-        return angle[:, None, None] + offset[None, None, :]
+        return angle[:, None, None] + offset[None, None, self.detector_bank]
 
     @property
     def Li(self):
@@ -349,10 +365,10 @@ class Candor(ReflData):
                 delta = vec[0]/10.
             return low - delta/2, high+delta/2
         data = self.v
-        ny, nx, _ = data.shape  # nangles, nwavelengths, nbanks
+        ny, nx, = data.shape  # nangles, nwavelengths
         (x, xlabel), (y, ylabel) = self.get_axes()
-        x, nx = np.hstack((x, x + (x.max()-x.min()))), 2*nx
-        xmin, xmax = limits(x, nx)
+        #x, nx = np.hstack((x, x + (x.max()-x.min()))), 2*nx
+        xmax, xmin = limits(x, nx)
         ymin, ymax = limits(y, ny)
         # TODO: self.detector.mask
         zmin, zmax = data.min(), data.max()
