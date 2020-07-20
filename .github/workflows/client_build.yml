@@ -40,18 +40,19 @@ jobs:
       with:
         name: dist
         path: web_gui/webreduce/dist
-    - name: Get the upload URL for a release
-      id: get
-      uses: bmaranville/get-release@v0.0.3
-      with:
-        tag: 'alpha'
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
+#    - name: Get the upload URL for a release
+#      id: get
+#      uses: bmaranville/get-release@v0.0.3
+#      with:
+#        tag: 'alpha'
+#      env:
+#        GITHUB_TOKEN: ${{ github.token }}
     - name: Update release
       uses: johnwbyrd/update-release@v1.0.0
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        release: alpha
+        release: bleeding-edge
+        tag: alpha
         files: web_gui/webreduce/dist.zip
 #    - name: Upload Release Asset
 #      id: upload-release-asset 
