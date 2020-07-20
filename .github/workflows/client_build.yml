@@ -41,7 +41,9 @@ jobs:
         path: web_gui/webreduce/dist
     - name: Get the upload URL for a release
       id: get
-      uses: bruceadams/get-release@v1.2.0
+      uses: bmaranville/get-release@latest
+      with:
+        tag: 'alpha'
       env:
         GITHUB_TOKEN: ${{ github.token }}
     - name: Upload Release Asset
