@@ -41,7 +41,7 @@ jobs:
         path: web_gui/webreduce/dist
     - name: Get the upload URL for a release
       id: get
-      uses: bmaranville/get-release@v0.0.1
+      uses: bmaranville/get-release@v0.0.2
       with:
         tag: 'alpha'
       env:
