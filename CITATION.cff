@@ -31,7 +31,7 @@ preferred-citation:
   month: 10
   start: 1500 # First page number
   end: 1506 # Last page number
-  title: "reductus: a stateless Python data reduction service with a browser front end"
+  title: "{\it reductus}: a stateless Python data reduction service with a browser front end"
   issue: 5
   volume: 51
   year: 2018
